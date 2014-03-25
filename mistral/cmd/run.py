@@ -13,13 +13,16 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
+import sys
 import eventlet
-eventlet.monkey_patch()
-
+eventlet.monkey_patch(
+        os=True,
+        select=True,
+        socket=True,
+        thread=False if '--use-debugger' in sys.argv else True,
+        time=True)
 
 import os
-import sys
 import threading
 
 # If ../mistral/__init__.py exists, add ../ to Python search path, so that
@@ -34,8 +37,8 @@ from oslo import messaging
 from oslo.config import cfg
 
 from mistral import config
-from mistral.engine import engine
-from mistral.engine.scalable.executor import server
+from mistral.engine.fake import engine
+from mistral.engine.fake import proxy
 
 from mistral.api import app
 from wsgiref import simple_server
@@ -43,21 +46,16 @@ from wsgiref import simple_server
 from mistral.openstack.common import log as logging
 
 
-LOG = logging.getLogger('mistral.cmd.task_executor')
+LOG = logging.getLogger(__name__)
 
-
-def launch_executor(transport):
+def launch_engine_pool(transport):
     try:
-        # TODO(rakhmerov): This is a temporary hack.
-        # We have to initialize engine in executor process because
-        # executor now calls engine.convey_task_result() directly.
-        engine.load_engine(transport)
-        target = messaging.Target(topic=cfg.CONF.executor.topic,
-                                  server=cfg.CONF.executor.host)
-        endpoints = [server.Executor()]
-        ex_server = messaging.get_rpc_server(transport, target, endpoints)
-        ex_server.start()
-        ex_server.wait()
+        target = messaging.Target(topic="executor",
+                                  server="0.0.0.0")
+        endpoints = [engine.EnginePool()]
+        engine_server = messaging.get_rpc_server(transport, target, endpoints)
+        engine_server.start()
+        engine_server.wait()
     except RuntimeError, e:
         sys.stderr.write("ERROR: %s\n" % e)
         sys.exit(1)
@@ -82,26 +80,14 @@ def main():
         config.parse_args()
         logging.setup('Mistral')
 
-        # Please refer to the oslo.messaging documentation for transport
-        # configuration. The default transport for oslo.messaging is rabbitMQ.
-        # The available transport drivers are listed under oslo.messaging at
-        # ./oslo/messaging/rpc/_drivers.  The drivers are prefixed with "impl".
-        # The transport driver is specified using the rpc_backend option in the
-        # default section of the oslo configuration file. The expected value
-        # for rpc_backend is the last part of the driver name. For example,
-        # the driver for rabbit is impl_rabbit and for the fake driver is
-        # impl_fake. The rpc_backend value for these are "rabbit" and "fake"
-        # respectively. There are additional options such as ssl and credential
-        # that can be specified depending on the driver.  Please refer to the
-        # driver implementation for those additional options.
-        transport = messaging.get_transport(cfg.CONF)
+        transport = proxy.get_transport()
 
         # launch the servers on different threads
-        t1 = threading.Thread(target=launch_executor, args=(transport,))
-        t2 = threading.Thread(target=launch_api, args=(transport,))
-        t1.start()
-        t2.start()
-        t1.join()
+        t_eng = threading.Thread(target=launch_engine_pool, args=(transport,))
+        t_api = threading.Thread(target=launch_api, args=(transport,))
+        t_eng.start()
+        t_api.start()
+        t_api.join()
     except RuntimeError, e:
         sys.stderr.write("ERROR: %s\n" % e)
         sys.exit(1)

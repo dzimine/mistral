@@ -19,6 +19,7 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from mistral.api.controllers.v1 import workbook
+from mistral.api.controllers.v1 import fake
 from mistral.api.controllers import resource
 
 
@@ -38,6 +39,7 @@ class Controller(object):
     """API root controller for version 1."""
 
     workbooks = workbook.WorkbooksController()
+    fake = fake.FakeExecutionController()
 
     @wsme_pecan.wsexpose(RootResource)
     def index(self):
