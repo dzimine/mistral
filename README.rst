@@ -30,6 +30,8 @@ Note that at least one Executor instance should be running so that workflow task
 
 ### Debugging
 To debug the engine, create etc/mistral.conf with the settings::
+    [DEFAULT]
+    rpc_backend = fake
     [engine]
     engine = mistral.engine.local.engine
     [pecan]
@@ -37,4 +39,4 @@ To debug the engine, create etc/mistral.conf with the settings::
 
 and run in pdb, PyDev or PyCharm::
 
-    mistral/cmd/api --config-file etc/mistral.conf --use-debugger
+    mistral/cmd/run.py --config-file etc/mistral.conf --use-debugger
